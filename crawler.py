@@ -41,7 +41,7 @@ def data_crawler(driver):
                     df = pd.read_html(res)[0]
                     columns = [i[1] for i in list(df.columns)]
                     df.columns = columns
-                    data.append(df.iloc[1:-1, :-1])
+                    data.append(df.iloc[:-1, :-1])
                     sleep(0.75)
 
                 except StaleElementReferenceException:
