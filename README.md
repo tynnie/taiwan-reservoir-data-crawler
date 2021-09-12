@@ -5,7 +5,7 @@
 
 ### 參考資料
 
-- [data][水庫基本資料](https://data.gov.tw/dataset/32726)
+- [Meta][水庫基本資料](https://data.gov.tw/dataset/32726)
   
 - [GitHub][infographicstw/reservoir-history-crawler](https://github.com/infographicstw/reservoir-history-crawler)
 
