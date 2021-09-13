@@ -64,8 +64,7 @@ def add_logger(timestamp):
 
 
 def setup_driver(link):
-    driver = webdriver.Chrome(executable_path='/Users/tynnie/Documents/chromedriver', chrome_options=chrome_options)
-    # driver = webdriver.Chrome(executable_path="the_path_to_your_driver", chrome_options=chrome_options)
+    driver = webdriver.Chrome(executable_path="the_path_to_your_driver", chrome_options=chrome_options)
     driver.get(link)
 
     return driver
