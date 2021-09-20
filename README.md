@@ -1,7 +1,7 @@
 # 歷年水庫水情資料爬取
 
 ### 資料搜集方式
-用Python的selenium自動化從「[台灣地區主要水庫蓄水量報告表](https://fhy.wra.gov.tw/ReservoirPage_2011/StorageCapacity.aspx)」下載歷年資料。
+用Python自動化從「[台灣地區主要水庫蓄水量報告表](https://fhy.wra.gov.tw/ReservoirPage_2011/StorageCapacity.aspx)」下載歷年資料。
 
 ### 參考資料
 
