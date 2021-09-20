@@ -1,14 +1,9 @@
 import logging
 import os
-from time import sleep
+import requests
 from datetime import timezone, datetime, timedelta
 import pandas as pd
-from selenium import webdriver
-from selenium.webdriver.support.select import Select
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.common.exceptions import StaleElementReferenceException
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
+from bs4 import BeautifulSoup
 
 
 # path setting
@@ -18,11 +13,6 @@ for d in directory:
     if not os.path.exists(dir_path + d):
         os.makedirs(dir_path + d)
 
-# webdriver setting
-chrome_options = webdriver.ChromeOptions()
-chrome_options.add_argument('--headless')
-chrome_options.add_argument('--no-sandbox')
-chrome_options.add_argument('--disable-dev-shm-usage')
 
 # datetime setting
 local_tz = timezone(timedelta(hours=+8))
@@ -63,13 +53,6 @@ def add_logger(timestamp):
     return my_logger
 
 
-def setup_driver(link):
-    driver = webdriver.Chrome(executable_path="the_path_to_your_driver", chrome_options=chrome_options)
-    driver.get(link)
-
-    return driver
-
-
 def record_time_parser(record_time):
     if len(record_time) > 1:
         parsed = '-'.join([record_time.split('(')[0][:4],
@@ -90,7 +73,8 @@ def combine_data(data, column):
                   'InflowVolume', 'OutflowTotal', 'RecordTime', 'WaterLevel',
                   'EffectiveWaterStorageCapacity', 'WaterStorageRate']
 
-    df_meta = pd.read_csv('meta.csv')
+    df_meta = pd.read_csv(dir_path + '/meta.csv')
+    df_meta = df_meta.drop_duplicates(subset=['ReservoirName'], keep="last")
     df_meta = df_meta[['Application', 'Area', 'Location', 'ReservoirName', 'Type', 'Year']]
 
     df = df.merge(df_meta, on='ReservoirName', how='left')
@@ -103,43 +87,36 @@ def save_data(data, column, date):
     df_data.to_csv(file_path, index=False)
 
 
-def data_crawler(driver):
+def data_crawler(link):
     date = get_yesterday_date()
     year = int(date[:4])
     month = int(date[4:6])
     day = int(date[6:])
+    s = requests.Session()
+
+    payload = {'ctl00$ctl02': 'ctl00$cphMain$ctl00|ctl00$cphMain$cboSearch',
+               'ctl00$cphMain$cboSearch': '所有水庫',
+               'ctl00$cphMain$ucDate$cboYear': year,
+               'ctl00$cphMain$ucDate$cboMonth': month,
+               'ctl00$cphMain$ucDate$cboDay': day,
+               '__EVENTTARGET': 'ctl00$cphMain$btnQuery',
+               '__EVENTARGUMENT': '',
+               '__LASTFOCUS': '',
+               '__ASYNCPOST': True}
 
     try:
-
-        element = driver.find_element_by_xpath("/html/body/form/div[3]/div[1]/select[1]/option[2]").click()
-        sleep(1)
-
-        select = Select(driver.find_element_by_id("ctl00_cphMain_ucDate_cboYear"))
-        select.select_by_value('{}'.format(year))
-        sleep(1)
-
-        select = Select(driver.find_element_by_id("ctl00_cphMain_ucDate_cboMonth"))
-        select.select_by_value('{}'.format(month))
-        sleep(1)
-
-        select = Select(driver.find_element_by_id("ctl00_cphMain_ucDate_cboDay"))
-        select.select_by_value('{}'.format(day))
-        sleep(1)
-
-        WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.XPATH,
-                                                                    '//*[@id="ctl00_cphMain_btnQuery"]'))).click()
-
-        res = driver.page_source
-        df = pd.read_html(res, flavor='html5lib')[0]
+        res = s.get(link)
+        soup = BeautifulSoup(res.content, 'lxml')
+        payload['__VIEWSTATE'] = soup.select_one('#__VIEWSTATE')['value']
+        payload['__VIEWSTATEGENERATOR'] = soup.select_one('#__VIEWSTATEGENERATOR')['value']
+        payload['ctl00_ctl02_HiddenField'] = soup.select_one('#ctl00_ctl02_HiddenField')['value']
+        fetch = s.post(link, data=payload, allow_redirects=True)
+        df = pd.read_html(fetch.text, flavor='html5lib')[0]
         columns = [i[1] for i in list(df.columns)]
         df.columns = columns
         df = df.iloc[:-1, :-1]
 
         save_data(df, columns, date)
-        driver.quit()
-
-    except StaleElementReferenceException as e:
-        pass
 
     except Exception as e:
         raise e
@@ -151,11 +128,9 @@ if __name__ == '__main__':
     logger.info('Start')
     try:
         url = 'https://fhy.wra.gov.tw/ReservoirPage_2011/StorageCapacity.aspx'
-        web_driver = setup_driver(url)
 
         # fetch data
-        data_crawler(web_driver)
-        web_driver.quit()
+        data_crawler(url)
 
     except Exception as e:
         logger.exception("Runtime Error Message:")
