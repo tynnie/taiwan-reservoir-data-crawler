@@ -4,11 +4,12 @@ import requests
 from datetime import timezone, datetime, timedelta
 import pandas as pd
 from bs4 import BeautifulSoup
+import glob
 
 
 # path setting
 dir_path = os.path.dirname(os.path.realpath(__file__))
-directory = ['/output/', '/log/']
+directory = ['/data/history_data/', '/log/']
 for d in directory:
     if not os.path.exists(dir_path + d):
         os.makedirs(dir_path + d)
@@ -23,8 +24,8 @@ def get_time_record():
     return time_record
 
 
-def get_yesterday_date():
-    yesterday = datetime.now().astimezone(local_tz) - timedelta(1)
+def get_yesterday_date(time_delta):
+    yesterday = datetime.now().astimezone(local_tz) - timedelta(time_delta)
     date = yesterday.strftime('%Y%m%d')
     return date
 
@@ -38,13 +39,11 @@ def add_logger(timestamp):
     my_logger = logging.getLogger('my_logger')
     my_logger.setLevel(logging.INFO)
 
-    # file handler: 設定 logger 儲存的檔案格式
     filename = '/log/{}.log'.format(timestamp)
     file_handler = logging.FileHandler(dir_path + filename, 'w', 'utf-8')
     file_handler.setFormatter(formatter)
     my_logger.addHandler(file_handler)
 
-    # console handler: 設定 logger 將訊息丟到 console 的格式
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.DEBUG)
     console_handler.setFormatter(formatter)
@@ -53,49 +52,43 @@ def add_logger(timestamp):
     return my_logger
 
 
-def record_time_parser(record_time):
-    if len(record_time) > 1:
-        parsed = '-'.join([record_time.split('(')[0][:4],
-                           record_time.split('(')[0][4:6],
-                           record_time.split('(')[0][6:]])
-        return parsed
-
-
-def combine_data(data, column):
+def combine_data(data, column, date):
     data.columns = column[:-1]
     df = data.drop(['統計時間', '與昨日水位差(公尺)'], axis=1)
     df = df.replace(r'\s+|%|％|-+', '', regex=True)
-    df['水情時間'] = (df['水情時間']
-                  .astype(str)
-                  .apply(lambda x: record_time_parser(x)))
+    df['水情時間'] = pd.to_datetime(date).strftime('%Y-%m-%d')
 
     df.columns = ['ReservoirName', 'EffectiveCapacity', 'CatchmentAreaRainfall',
                   'InflowVolume', 'OutflowTotal', 'RecordTime', 'WaterLevel',
                   'EffectiveWaterStorageCapacity', 'WaterStorageRate']
 
-    df_meta = pd.read_csv(dir_path + '/meta.csv')
-    df_meta = df_meta.drop_duplicates(subset=['ReservoirName'], keep="last")
+    df_meta = pd.read_csv(dir_path + '/ref/meta.csv')
+    df_meta = df_meta.drop_duplicates(subset=['ReservoirName'], keep='last')
     df_meta = df_meta[['Application', 'Area', 'Location', 'ReservoirName', 'Type', 'Year']]
 
     df = df.merge(df_meta, on='ReservoirName', how='left')
+    df = df[(df['InflowVolume'].astype(bool) & df['OutflowTotal'].astype(bool))]
+    df = df.drop('Year', axis=1)
     return df
 
 
 def save_data(data, column, date):
-    df_data = combine_data(data, column)
-    file_path = dir_path + '/output/reservoir_{}.csv'.format(date)
+    df_data = combine_data(data, column, date)
+    file_path = dir_path + '/data/history_data/reservoir_{}.csv'.format(date)
     df_data.to_csv(file_path, index=False)
+    combine_history_data()
 
 
-def data_crawler(link):
-    date = get_yesterday_date()
+def data_crawler(link, time_delta=1):
+    date = get_yesterday_date(time_delta)
     year = int(date[:4])
     month = int(date[4:6])
     day = int(date[6:])
+    search_type = ['防汛重點水庫', '所有水庫', '水庫及攔河堰']
     s = requests.Session()
 
     payload = {'ctl00$ctl02': 'ctl00$cphMain$ctl00|ctl00$cphMain$cboSearch',
-               'ctl00$cphMain$cboSearch': '所有水庫',
+               'ctl00$cphMain$cboSearch': search_type[2],
                'ctl00$cphMain$ucDate$cboYear': year,
                'ctl00$cphMain$ucDate$cboMonth': month,
                'ctl00$cphMain$ucDate$cboDay': day,
@@ -122,6 +115,26 @@ def data_crawler(link):
         raise e
 
 
+def combine_history_data():
+    files = glob.glob('data/history_data/*.csv')
+    year = list(set([file.split('/')[-1].split('_')[-1][:4] for file in files]))
+
+    for y in year:
+        data = []
+        for file in files:
+            file_year = file.split('/')[-1].split('_')[-1][:4]
+            if file_year == y:
+                df = pd.read_csv(file)
+                data.append(df)
+
+        history_data = pd.concat(data)
+        year_data = pd.read_csv('data/reservoir_{}.csv'.format(y))
+
+        all_data = pd.concat([history_data, year_data])
+        all_data = all_data.drop_duplicates()
+        all_data.to_csv('data/reservoir_{}.csv'.format(y), index=False)
+
+
 if __name__ == '__main__':
     timestamp = get_time_record()
     logger = add_logger(timestamp)
@@ -130,9 +143,12 @@ if __name__ == '__main__':
         url = 'https://fhy.wra.gov.tw/ReservoirPage_2011/StorageCapacity.aspx'
 
         # fetch data
+        """
+        time_delta: default 1
+        """
         data_crawler(url)
 
     except Exception as e:
-        logger.exception("Runtime Error Message:")
+        logger.exception('Runtime Error Message:')
 
-    logger.info("Done!")
+    logger.info('Done!')
