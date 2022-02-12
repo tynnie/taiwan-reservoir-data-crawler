@@ -2,4 +2,5 @@ log/*
 data/*
 __pycache__
 .idea/*
-data_analysis.py
+data_analysis*.py
+upload*

@@ -62,7 +62,8 @@ def combine_data(data, column, date):
                   'InflowVolume', 'OutflowTotal', 'RecordTime', 'WaterLevel',
                   'EffectiveWaterStorageCapacity', 'WaterStorageRate']
 
-    df_meta = pd.read_csv(dir_path + '/ref/meta.csv')
+    # df_meta = pd.read_csv(dir_path + '/ref/meta.csv')
+    df_meta = pd.read_csv('https://raw.githubusercontent.com/tynnie/taiwan-reservoir-data-crawler/main/ref/meta.csv')
     df_meta = df_meta.drop_duplicates(subset=['ReservoirName'], keep='last')
     df_meta = df_meta[['Application', 'Area', 'Location', 'ReservoirName', 'Type', 'Year']]
 
